@@ -12,6 +12,7 @@ export * from './prisma/prisma.service';
 export * from './decorators/current-user.decorator';
 export * from './decorators/public.decorator';
 export * from './decorators/roles.decorator';
+export * from './decorators/org-roles.decorator';
 
 // Global DTOs
 export * from './dtos/pagination.dto';
@@ -23,6 +24,7 @@ export * from './filters/http-exception.filter';
 // Guards
 export * from './guards/jwt-auth.guard';
 export * from './guards/roles.guard';
+export * from './guards/organization-role.guard';
 
 // Helpers
 export * from './helpers/crypto.helper';

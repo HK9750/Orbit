@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiResponse } from '@app/common';
+import { Prisma } from '@app/common/prisma';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -32,6 +33,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
                 message = Array.isArray(msg) ? msg.join(', ') : (msg as string) || exception.message;
             } else {
                 message = exception.message;
+            }
+        } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+            const prismaError = exception as Prisma.PrismaClientKnownRequestError;
+            switch (prismaError.code) {
+                case 'P2002':
+                    statusCode = HttpStatus.CONFLICT;
+                    message = 'Unique constraint violation';
+                    break;
+                case 'P2025':
+                    statusCode = HttpStatus.NOT_FOUND;
+                    message = 'Record not found';
+                    break;
+                default:
+                    statusCode = HttpStatus.BAD_REQUEST;
+                    message = `Database error: ${prismaError.code}`;
             }
         } else if (exception instanceof Error) {
             statusCode = HttpStatus.INTERNAL_SERVER_ERROR;

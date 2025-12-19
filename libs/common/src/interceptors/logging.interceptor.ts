@@ -18,7 +18,8 @@ export class LoggingInterceptor implements NestInterceptor {
         this.logger.log(`[${method}] ${url} - ${ip} - ${userAgent}`);
 
         if (Object.keys(body || {}).length > 0) {
-            this.logger.debug(`Request Body: ${JSON.stringify(body)}`);
+            const sensitizedBody = this.sanitizeBody(body);
+            this.logger.debug(`Request Body: ${JSON.stringify(sensitizedBody)}`);
         }
 
         return next.handle().pipe(
@@ -33,5 +34,23 @@ export class LoggingInterceptor implements NestInterceptor {
                 },
             }),
         );
+    }
+
+    private sanitizeBody(body: any): any {
+        if (!body) return body;
+        if (typeof body !== 'object') return body;
+
+        const sanitized = { ...body };
+        const sensitiveKeys = ['password', 'token', 'access_token', 'refresh_token', 'clientSecret'];
+
+        for (const key of Object.keys(sanitized)) {
+            if (sensitiveKeys.includes(key)) {
+                sanitized[key] = '***';
+            } else if (typeof sanitized[key] === 'object') {
+                sanitized[key] = this.sanitizeBody(sanitized[key]);
+            }
+        }
+
+        return sanitized;
     }
 }
