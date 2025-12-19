@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  SUPER_ADMIN
+  ADMIN
+}
+
+model User {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  password   String
+  name       String?
+  avatarUrl  String?
+  globalRole UserRole @default(USER)
+
+  // System State
+  isActive   Boolean @default(true)
+  isVerified Boolean @default(false)
+  isDeleted  Boolean @default(false)
+
+  // Relations
+  memberships OrganizationMember[]
+
+  // Auditing
+  auditLogs AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Organization {
+  id      String  @id @default(uuid())
+  name    String
+  slug    String  @unique
+  logoUrl String?
+
+  // Domain Relations
+  members  OrganizationMember[]
+  clients  Client[]
+  projects Project[]
+  tags     Tag[]
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+  DECLINED
+}
+
+model OrganizationMember {
+  id String @id @default(uuid())
+
+  role   MemberRole   @default(MEMBER)
+  status MemberStatus @default(ACTIVE)
+
+  invitationToken String? @unique
+  invitedEmail    String?
+
+  // Connections
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  // Work Relations
+  assignedTasks   TaskAssignee[]
+  timeEntries     TimeEntry[]
+  comments        Comment[]
+  createdInvoices Invoice[]      @relation("InvoiceCreator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Client {
+  id       String  @id @default(uuid())
+  name     String
+  email    String?
+  phone    String?
+  address  String?
+  currency String  @default("USD")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  projects Project[]
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+
+  isBillable Boolean  @default(true)
+  hourlyRate Decimal? @db.Decimal(10, 2)
+
+  // Parents
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId String?
+
+  // Children
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Task {
+  id          String  @id @default(uuid())
+  title       String
+  description String? // Support Markdown
+
+  status   TaskStatus   @default(TODO)
+  priority TaskPriority @default(MEDIUM)
+
+  dueDate DateTime?
+
+  // Parents
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId String
+
+  // Relations
+  assignees   TaskAssignee[]
+  timeEntries TimeEntry[]
+  tags        Tag[]
+  comments    Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TaskAssignee {
+  id String @id @default(uuid())
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId String
+
+  member   OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String
+
+  assignedAt DateTime @default(now())
+
+  @@unique([taskId, memberId])
+}
+
+model Tag {
+  id   String @id @default(uuid())
+  name String
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  tasks Task[]
+
+  @@unique([organizationId, name])
+}
+
+model TimeEntry {
+  id          String  @id @default(uuid())
+  description String?
+
+  startTime DateTime
+  endTime   DateTime?
+  duration  Int? // in seconds (calculated)
+
+  isBillable Boolean @default(true)
+
+  // Relations
+  task   Task?   @relation(fields: [taskId], references: [id])
+  taskId String?
+
+  member   OrganizationMember @relation(fields: [memberId], references: [id])
+  memberId String
+
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id            String @id @default(uuid())
+  invoiceNumber String // e.g. INV-2024-001
+
+  issueDate DateTime @default(now())
+  dueDate   DateTime
+
+  status InvoiceStatus @default(DRAFT)
+
+  // Financials
+  subtotal Decimal @db.Decimal(10, 2)
+  taxRate  Decimal @default(0) @db.Decimal(5, 2)
+  total    Decimal @db.Decimal(10, 2)
+  currency String  @default("USD")
+
+  // Relations
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  client   Client @relation(fields: [clientId], references: [id])
+  clientId String
+
+  creator   OrganizationMember? @relation("InvoiceCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  creatorId String?
+
+  items InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, invoiceNumber])
+}
+
+model InvoiceItem {
+  id          String @id @default(uuid())
+  description String
+
+  quantity  Decimal @db.Decimal(10, 2) // Hours or Units
+  unitPrice Decimal @db.Decimal(10, 2)
+  amount    Decimal @db.Decimal(10, 2) // qty * price
+
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+
+  // Link back to time entries
+  timeEntries TimeEntry[]
+}
+
+model Comment {
+  id      String @id @default(uuid())
+  content String
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId String
+
+  author   OrganizationMember @relation(fields: [authorId], references: [id])
+  authorId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  action     String
+  entityType String
+  entityId   String
+
+  details Json?
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+}
