@@ -10,11 +10,15 @@ import {
     HttpCode,
     NotFoundException,
     Query,
+    Post,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
-import { CurrentUser, ICurrentUser, Roles, RolesGuard, ApiResponse, ApiResponseUtil } from '@app/common';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdatePasswordDto } from './dto/update-password.dto';
+import { CurrentUser, ICurrentUser, Roles, RolesGuard, ApiResponse, ApiResponseUtil, JwtAuthGuard } from '@app/common';
 import { UserRole } from '@app/common/prisma';
 
 @Controller('users')
@@ -33,10 +37,30 @@ export class UsersController {
 
     @Get('me')
     @HttpCode(HttpStatus.OK)
+    @UseGuards(JwtAuthGuard)
     async getProfile(@CurrentUser() user: ICurrentUser): Promise<ApiResponse<any>> {
-        const userData = await this.usersService.findWithMemberships(user.id);
-        const data = userData; // Return full structure including memberships
-        return ApiResponseUtil.success(data, 'Profile retrieved successfully', HttpStatus.OK);
+        const profile = await this.usersService.findWithMemberships(user.id);
+        return ApiResponseUtil.success(profile, 'User profile retrieved');
+    }
+
+    @Patch('me')
+    @UseGuards(JwtAuthGuard)
+    async updateProfile(
+        @CurrentUser() user: ICurrentUser,
+        @Body() dto: UpdateProfileDto
+    ): Promise<ApiResponse<any>> {
+        const result = await this.usersService.updateProfile(user.id, dto);
+        return ApiResponseUtil.success(result, 'Profile updated');
+    }
+
+    @Patch('me/password')
+    @UseGuards(JwtAuthGuard)
+    async updatePassword(
+        @CurrentUser() user: ICurrentUser,
+        @Body() dto: UpdatePasswordDto
+    ): Promise<ApiResponse<any>> {
+        await this.usersService.updatePassword(user.id, dto);
+        return ApiResponseUtil.success(null, 'Password updated');
     }
 
     @Get(':id')

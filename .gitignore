@@ -30,3 +30,7 @@ coverage/
 # Misc
 *.tgz
 .npm
+
+#postman collection
+orbit-api.postman_collection.json
+orbit-api.postman_environment.json
